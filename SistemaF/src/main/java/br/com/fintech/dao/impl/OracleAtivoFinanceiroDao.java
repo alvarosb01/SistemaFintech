@@ -38,10 +38,10 @@ public class OracleAtivoFinanceiroDao implements AtivoFinanceiroDAO {
         }
     }
 
-
     @Override
     public List<AtivoFinanceiro> listarTodos() throws DBException {
-        return List.of();
+        // Reutilizando sua implementação do método listar()
+        return listar();
     }
 
     @Override
@@ -58,38 +58,15 @@ public class OracleAtivoFinanceiroDao implements AtivoFinanceiroDAO {
     }
 
     @Override
-    public AtivoFinanceiro buscar(int id) {
-        return null;
-    }
-
-    @Override
-    public void remover(int id) {
-        String sql = "DELETE FROM TB_ATIVO_FINANCEIRO WHERE ID_ATIVO = ?";
-
-        try (Connection conn = ConnectionManager.getConnection();
+    public AtivoFinanceiro buscarPorId(int id) throws DBException {
+        String sql = "SELECT ID, NOME, VALOR, QUANTIDADE, DATA_COMPRA FROM TB_ATIVO_FINANCEIRO WHERE ID = ?";
+        try (Connection conn = getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setInt(1, id);
-            int linhasAfetadas = stmt.executeUpdate();
-            System.out.println("Linhas afetadas: " + linhasAfetadas);
+            ResultSet rs = stmt.executeQuery();
 
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-
-    @Override
-    public List<AtivoFinanceiro> listar() {
-        List<AtivoFinanceiro> lista = new ArrayList<>();
-        String sql = "SELECT  NOME, VALOR, QUANTIDADE, DATA_COMPRA FROM TB_ATIVO_FINANCEIRO";
-
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-
-            while (rs.next()) {
-
+            if (rs.next()) {
                 String nome = rs.getString("NOME");
                 double valor = rs.getDouble("VALOR");
                 int quantidade = rs.getInt("QUANTIDADE");
@@ -97,7 +74,85 @@ public class OracleAtivoFinanceiroDao implements AtivoFinanceiroDAO {
                 LocalDate dataCompra = (dataCompraSQL != null) ? dataCompraSQL.toLocalDate() : null;
 
                 AtivoFinanceiroImpl ativo = new AtivoFinanceiroImpl(nome, quantidade, valor, dataCompra);
-                ativo.setId();
+                // Usando reflexão para setar o ID, já que não há método setId(int)
+                try {
+                    java.lang.reflect.Field idField = AtivoFinanceiro.class.getDeclaredField("id");
+                    idField.setAccessible(true);
+                    idField.set(ativo, rs.getInt("ID"));
+                } catch (Exception e) {
+                    // Se não conseguir setar o ID, continua sem ele
+                    System.err.println("Não foi possível setar o ID: " + e.getMessage());
+                }
+
+                return ativo;
+            }
+            return null;
+        } catch (SQLException | ClassNotFoundException e) {
+            throw new DBException("Erro ao buscar ativo por ID: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean remover(int id) throws DBException {
+        String sql = "DELETE FROM TB_ATIVO_FINANCEIRO WHERE ID = ?";
+
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            int linhasAfetadas = stmt.executeUpdate();
+            System.out.println("Linhas afetadas: " + linhasAfetadas);
+
+            return linhasAfetadas > 0;
+
+        } catch (SQLException | ClassNotFoundException e) {
+            throw new DBException("Erro ao remover ativo: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean existe(int id) throws DBException {
+        String sql = "SELECT COUNT(*) FROM TB_ATIVO_FINANCEIRO WHERE ID = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            ResultSet rs = stmt.executeQuery();
+            rs.next();
+            return rs.getInt(1) > 0;
+
+        } catch (SQLException | ClassNotFoundException e) {
+            throw new DBException("Erro ao verificar existência do ativo: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<AtivoFinanceiro> listar() {
+        List<AtivoFinanceiro> lista = new ArrayList<>();
+        String sql = "SELECT ID, NOME, VALOR, QUANTIDADE, DATA_COMPRA FROM TB_ATIVO_FINANCEIRO";
+
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                int id = rs.getInt("ID");
+                String nome = rs.getString("NOME");
+                double valor = rs.getDouble("VALOR");
+                int quantidade = rs.getInt("QUANTIDADE");
+                Date dataCompraSQL = rs.getDate("DATA_COMPRA");
+                LocalDate dataCompra = (dataCompraSQL != null) ? dataCompraSQL.toLocalDate() : null;
+
+                AtivoFinanceiroImpl ativo = new AtivoFinanceiroImpl(nome, quantidade, valor, dataCompra);
+                // Usando reflexão para setar o ID, já que não há método setId(int)
+                try {
+                    java.lang.reflect.Field idField = AtivoFinanceiro.class.getDeclaredField("id");
+                    idField.setAccessible(true);
+                    idField.set(ativo, id);
+                } catch (Exception e) {
+                    // Se não conseguir setar o ID, continua sem ele
+                    System.err.println("Não foi possível setar o ID: " + e.getMessage());
+                }
 
                 lista.add(ativo);
             }
@@ -107,5 +162,4 @@ public class OracleAtivoFinanceiroDao implements AtivoFinanceiroDAO {
 
         return lista;
     }
-
 }
